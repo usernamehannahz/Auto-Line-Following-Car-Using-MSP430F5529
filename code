@@ -1,0 +1,102 @@
+#include <msp430f5529.h>
+
+#define PWM_PERIOD     10000  // 10 ms at 1 MHz
+#define SERVO_MIN      300    // 0.3 ms angle = 0°
+#define SERVO_CENTER   1500   // 1.5 ms angle = ~90°
+#define SERVO_MAX      2500   // 2.5 ms angle = 180°
+#define SERVO_LEFT     SERVO_MAX // counterclockwise
+#define SERVO_RIGHT    SERVO_MIN // clockwise
+
+
+volatile int sensorout;
+
+// --- Functions ---
+void setupServoPWM(void);
+void setServo(unsigned int ticks);
+void straight(void);
+void turnright(void);
+void turnleft(void);
+void stop(void);
+void setupMotorEnable(void);
+
+void main(void)
+{
+    WDTCTL = WDTPW | WDTHOLD;
+
+    P1DIR |= 0b11110011;   // P1.3 and P1.2 are IR sensor inputs (others are outputs)
+    P1DIR |= BIT0;         // P1.0 = LED
+    setupMotorEnable();    // Configure Motor Driver Enable on P1.6
+    P2DIR |= BIT2 | BIT3 | BIT4 | BIT5; // Set motor control pins (for IN1-IN4) on P2 are outputs
+
+    setupServoPWM();       // Setup servo motor on P1.2
+
+    while (1)
+    {
+        sensorout = P1IN & 0b1100;    // Read P1.3(right) and P1.2(left)
+
+        if (sensorout == 0b01100)      // Both sensors on dark
+            straight();
+        else if (sensorout == 0b1000)  // Right sensor on dark, car is left
+            turnright();
+        else if (sensorout == 0b100) // Left sensor on dark, car is right
+            turnleft();
+        else if (sensorout == 0b0)     // Both sensors on white
+            stop();
+    }
+}
+
+// Motor wiring:
+// Right motor: IN1 = P2.2, IN2 = P2.3
+// Left motor:  IN3 = P2.4, IN4 = P2.5
+
+void straight(void)
+{
+    P2OUT = 0x00;
+    P2OUT |= BIT3 | BIT4;  // Right forward (IN2), Left forward (IN3)
+    setServo(SERVO_CENTER);
+}
+
+void turnright(void)
+{
+    P2OUT = 0x00;
+    P2OUT |= BIT4;         // Left motor only (IN3) forward
+    setServo(SERVO_RIGHT);
+}
+
+void turnleft(void)
+{
+    P2OUT = 0x00;          
+    P2OUT |= BIT3;         // Right motor only (IN2) forward 
+    setServo(SERVO_LEFT);
+}
+
+void stop(void)
+{
+    P2OUT = 0x00;
+    setServo(SERVO_CENTER);
+}
+
+// --- Servo Setup ---
+void setupServoPWM(void)
+{
+    P2DIR |= BIT0;        // P2.0 = output
+    P2SEL |= BIT0;        // P2.0 = TA1.1 PWM output
+
+    TA1CCR0 = PWM_PERIOD - 1;        // Set 10 ms period (1 MHz)
+    TA1CCR1 = SERVO_CENTER;          // Start at center
+    TA1CCTL1 = OUTMOD_7;             // Reset/set mode
+    TA1CTL = TASSEL_2 | ID_0 | MC_1; // SMCLK, up mode
+}
+
+void setServo(unsigned int ticks)
+{
+    if (ticks < SERVO_MIN)  ticks = SERVO_MIN;
+    if (ticks > SERVO_MAX)  ticks = SERVO_MAX;
+    TA1CCR1 = ticks;
+}
+
+void setupMotorEnable(void)
+{
+    P1DIR |= BIT6;   // Set P1.6 as output
+    P1OUT |= BIT6;   // Drive P1.6 HIGH to enable the motor driver
+}
