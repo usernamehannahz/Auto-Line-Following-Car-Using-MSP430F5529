@@ -1,9 +1,9 @@
 #include <msp430f5529.h>
 
 #define PWM_PERIOD     10000  // 10 ms at 1 MHz
-#define SERVO_MIN      300    // 0.3 ms angle = 0°
+#define SERVO_MIN      300    // 0.3 ms angle = 180° in actuall practice
 #define SERVO_CENTER   1500   // 1.5 ms angle = ~90°
-#define SERVO_MAX      2500   // 2.5 ms angle = 180°
+#define SERVO_MAX      2500   // 2.5 ms angle = 0°
 #define SERVO_LEFT     SERVO_MAX // counterclockwise
 #define SERVO_RIGHT    SERVO_MIN // clockwise
 
@@ -19,11 +19,12 @@ void turnleft(void);
 void stop(void);
 void setupMotorEnable(void);
 
+
 void main(void)
 {
     WDTCTL = WDTPW | WDTHOLD;
 
-    P1DIR |= 0b11110011;   // P1.3 and P1.2 are IR sensor inputs (others are outputs)
+    P1DIR &= ~(BIT2 | BIT4);   // P1.2 and P1.4 are IR sensor inputs (others are outputs)
     P1DIR |= BIT0;         // P1.0 = LED
     setupMotorEnable();    // Configure Motor Driver Enable on P1.6
     P2DIR |= BIT2 | BIT3 | BIT4 | BIT5; // Set motor control pins (for IN1-IN4) on P2 are outputs
@@ -32,15 +33,17 @@ void main(void)
 
     while (1)
     {
-        sensorout = P1IN & 0b1100;    // Read P1.3(right) and P1.2(left)
+        // Read sensor inputs:
+        // Left sensor on P1.2 (BIT2), right sensor on P1.4 (BIT4)
+        sensorout = P1IN & (BIT2 | BIT4);
 
-        if (sensorout == 0b01100)      // Both sensors on dark
+        if (sensorout == (BIT2 | BIT4))       // Both sensors detect dark: straight
             straight();
-        else if (sensorout == 0b1000)  // Right sensor on dark, car is left
+        else if (sensorout == BIT4)            // Right sensor dark (car veering left): turn right
             turnright();
-        else if (sensorout == 0b100) // Left sensor on dark, car is right
+        else if (sensorout == BIT2)            // Left sensor dark (car veering right): turn left
             turnleft();
-        else if (sensorout == 0b0)     // Both sensors on white
+        else if (sensorout == 0b0)            // No sensor detects dark: stop
             stop();
     }
 }
@@ -51,28 +54,28 @@ void main(void)
 
 void straight(void)
 {
-    P2OUT = 0x00;
+    P2OUT = 0b0;
     P2OUT |= BIT3 | BIT4;  // Right forward (IN2), Left forward (IN3)
     setServo(SERVO_CENTER);
 }
 
 void turnright(void)
 {
-    P2OUT = 0x00;
+    P2OUT = 0b0;
     P2OUT |= BIT4;         // Left motor only (IN3) forward
     setServo(SERVO_RIGHT);
 }
 
 void turnleft(void)
 {
-    P2OUT = 0x00;          
+    P2OUT = 0b0;          
     P2OUT |= BIT3;         // Right motor only (IN2) forward 
     setServo(SERVO_LEFT);
 }
 
 void stop(void)
 {
-    P2OUT = 0x00;
+    P2OUT = 0b0;
     setServo(SERVO_CENTER);
 }
 
